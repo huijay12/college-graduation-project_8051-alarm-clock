@@ -1,0 +1,10 @@
+"STARTUP.obj",
+"main.obj",
+"DS1307.obj",
+"eeprom.obj",
+"I2C.obj",
+"LCD.obj",
+"delay.obj",
+"servo.obj" 
+TO "project" 
+RAMSIZE(256) 

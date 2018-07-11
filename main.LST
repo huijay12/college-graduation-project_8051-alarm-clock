@@ -1,0 +1,671 @@
+C51 COMPILER V9.03   MAIN                                                                  11/22/2014 02:38:00 PAGE 1   
+
+
+C51 COMPILER V9.03, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN main.OBJ
+COMPILER INVOKED BY: C:\Keil\C51\BIN\C51.EXE main.c BROWSE DEBUG OBJECTEXTEND
+
+line level    source
+
+   1          #include "Includes.h"
+   2          
+   3          /*************************小蜜蜂樂譜陣列************************/
+   4          code unsigned int music_Table[]={G,24,E,24,E,48,F,24,D,24,D,48,C,24,D,24,E,24,F,24,G,24,G,24,G,48
+   5          ,G,24,E,24,E,48,F,24,D,24,D,48,C,24,E,24,G,24,G,24,E,72
+   6          ,D,24,D,24,D,24,D,24,D,24,E,24,F,48,E,24,E,24,E,24,E,24,E,24,F,24,G,48,
+   7          G,24,E,24,E,48,F,24,D,24,D,48,C,24,E,24,G,24,G,24,C,72,end};
+   8          
+   9          unsigned int buttonSignal= 0, bbb=0;
+  10          
+  11          unsigned char   z=0;    //資料計數 
+  12          unsigned int voice_Now;
+  13          
+  14          unsigned char i=0,j=0, k=0, l=0, nullIsFound=0, tableNum=0;
+  15          xdata unsigned char lcd_day[15] = "";   //日期陣列
+  16          //unsigned char lcd_time[15] = "";      //時間陣列
+  17          //unsigned char received[20];
+  18          
+  19          
+  20          unsigned char receiving;   //是否接收藍芽訊息flag
+  21          xdata unsigned char receivString[20];  //接收藍芽用字串
+  22          
+  23          /*******************************************************************************/
+  24          //規定 EEPROM中 的鬧鐘表
+  25          //      no       星期      時   分      isset
+  26          //      1  0x11~0x17  0x18 0x19 0x1A
+  27          //      2  0x21~0x27  0x28 0x29 0x2A
+  28          //      .
+  29          //      .
+  30          //      .
+  31          //  10 0xA1~0xA7  0xA8 0xA9 0xAA
+  32          //
+  33          // if "value == 0xAA means null, 0xBB means isset
+  34          /*******************************************************************************/
+  35          
+  36          unsigned char mode=0x00, h1=0x00, h2=0x00, h3=0x00, m1=0x00, m2=0x00, m3=0x00, Y1=0x00, Y2=0x00, Y3=0x00, 
+             -Mon1=0x00, 
+  37                        Mon2=0x00, Mon3=0x00, D1=0x00, D2=0x00, D3=0x00, wd1=0x00;
+  38          
+  39          unsigned char alsec=0x00, almin=0xAA, alhour=0xAA, alweekday[8];
+  40          
+  41          //變數鬧鐘表: 1~7星期  8時 9分 10isset
+  42          xdata unsigned char altable[11][11];
+  43          
+  44          void resSetting();
+  45          void UART_int();                                //宣告UART中斷服務程式
+  46          void bee();
+  47          
+  48          
+  49          // Main function
+  50          void main()
+  51          {       
+  52   1      
+  53   1              unsigned char sec,min,hour,day,month,year,weekday;
+  54   1      
+C51 COMPILER V9.03   MAIN                                                                  11/22/2014 02:38:00 PAGE 2   
+
+  55   1      
+  56   1              EA=1;          //致能整體中斷
+  57   1      
+  58   1              TMOD=0x21;      //設定Timer1在mode2      Timer0在mode1
+  59   1              PCON=PCON&0x7f; //清除SMOD
+  60   1              TH1=0xFD;       //設定baud rate=9600
+  61   1              TR1=1;          //啟動Timer1
+  62   1      
+  63   1              SCON=0x50;      //UART Mode1,REN=1
+  64   1              IP=0x10;        //設定UART中斷為高優先權,PS=1
+  65   1              IE=0x90;        //致能UART中斷,EA=1 & ES=1
+  66   1      
+  67   1              
+  68   1              ET0= 1;
+  69   1      
+  70   1        /* Initilize the lcd before displaying any thing on the lcd */
+  71   1          LCD_Init();
+  72   1      
+  73   1        /* Initilize the RTC(ds1307) before reading or writing time/date */
+  74   1          DS1307_Init();
+  75   1      
+  76   1      
+  77   1        /*Set the time and Date only once */
+  78   1         //DS1307_SetTime(0x23,0x59,0x00);  //  10:40:20
+  79   1         //DS1307_SetDate(Thursday,0x14,0x08,0x14);  //  Thur 14th July 2014
+  80   1         //DS1307_SetDate(0x14,0x08,0x14); 
+  81   1      
+  82   1              LCD_DisplayString("Loading...");
+  83   1      
+  84   1         ///////////////////////////////////////////////////////////////////////////第一次要先設定EEPROM && 全部
+             -清空
+  85   1              /* for(i=1; i<=10; i++)                                                 
+  86   1                      for(j=1; j<=10; j++)
+  87   1                              eewrite(i*16+j, 0xAA);                           
+  88   1                */
+  89   1      
+  90   1      
+  91   1              P11 = button;
+  92   1      
+  93   1      
+  94   1      
+  95   1              /////////////////////////////////////////////////////////////////////////////////////////////////////////
+             -/////   
+  96   1              for(i=1; i<=10; i++)                                                            //從EEPROM讀出整個鬧鐘表  丟進陣列                                                       
+  97   1                      for(j=1; j<=10; j++)
+  98   1                              altable[i][j] = eeread(j+16*i);
+  99   1      
+ 100   1      //altable[i][j] = 0xAA;
+ 101   1                              
+ 102   1              /////////////////////////////////////////////
+ 103   1          /////////////////////////////////////////////////////////////////
+ 104   1              //
+ 105   1              /////////////////////////////////////////////////////////////////////////////////////////////////////////
+             -/////
+ 106   1      
+ 107   1          for(i=0; i<50; i++){write_pos(60);}   //馬達定位
+ 108   1              resSetting();
+ 109   1      
+ 110   1      
+ 111   1      
+ 112   1         /* Display the Time and Date continously */ 
+ 113   1         while(receiving==0)
+C51 COMPILER V9.03   MAIN                                                                  11/22/2014 02:38:00 PAGE 3   
+
+ 114   1          {
+ 115   2      
+ 116   2                      P11 = button;
+ 117   2      
+ 118   2                  LCD_GoToLineOne();
+ 119   2                      LCD_DisplayString("    ");
+ 120   2      
+ 121   2                 /* Read the Time from RTC(ds1307) */
+ 122   2              DS1307_GetTime(&hour,&min,&sec);        
+ 123   2      
+ 124   2                      /* Display the time on Firstline-7th position*/
+ 125   2              LCD_GoToXY(0,4);                 
+ 126   2              LCD_DisplayRtcTime(hour,min,sec);
+ 127   2      
+ 128   2                      /* Display "Date" on Second line*/
+ 129   2                      LCD_GoToLineTwo();
+ 130   2                      //LCD_DisplayString("Date: ");
+ 131   2      
+ 132   2                  /* Read the Date from RTC(ds1307) */ 
+ 133   2              DS1307_GetDate(&weekday,&day,&month,&year);   
+ 134   2                      //DS1307_GetDate(&day,&month,&year);       
+ 135   2      
+ 136   2                      /* Display the Date on Secondline-7th position*/
+ 137   2              LCD_GoToXY(1,0); 
+ 138   2      
+ 139   2                      LCD_DisplayString("  ");
+ 140   2      
+ 141   2                      LCD_DisplayRtcDate(day,month,year);     
+ 142   2              
+ 143   2                      switch(weekday)
+ 144   2                      {
+ 145   3                              case Monday:    LCD_DisplayString("  MON ");    break;
+ 146   3                              case Tuesday:   LCD_DisplayString("  TUE ");    break;
+ 147   3                              case Wednesday: LCD_DisplayString("  WED ");    break;
+ 148   3                              case Thursday:  LCD_DisplayString("  THU ");    break;
+ 149   3                              case Friday:    LCD_DisplayString("  FRI ");    break;
+ 150   3                              case Saturday:  LCD_DisplayString("  SAT ");    break;
+ 151   3                              case Sunday:    LCD_DisplayString("  SUN ");    break;
+ 152   3      
+ 153   3                              default: LCD_DisplayString("  ???");    break;
+ 154   3                      }
+ 155   2      
+ 156   2      
+ 157   2              //j=0x01;
+ 158   2              for(i=1;i<=10;i++)               //鬧鐘星期判斷
+ 159   2              {
+ 160   3                       if(altable[i][weekday] == 0xBB)
+ 161   3                       {
+ 162   4                              //鬧鐘時間判斷
+ 163   4                              if(altable[i][8]==hour && altable[i][9]==min && sec==0)
+ 164   4                              {
+ 165   5      
+ 166   5                                      for(k=0; k<20; k++){write_pos(90);}
+ 167   5                                      for(k=0; k<40; k++){write_pos(60);}
+ 168   5                                      k=0;
+ 169   5                                      resSetting();
+ 170   5      
+ 171   5                                      delay_ms(1000);
+ 172   5      
+ 173   5                                      //button = 0;
+ 174   5                                      buttonSignal = 0;
+ 175   5      
+C51 COMPILER V9.03   MAIN                                                                  11/22/2014 02:38:00 PAGE 4   
+
+ 176   5                                      LCD_GoToLineTwo();
+ 177   5                              LCD_DisplayString("                ");
+ 178   5                              LCD_GoToLineOne();
+ 179   5                                      LCD_DisplayString("alarm clock!!!");
+ 180   5                                      while(buttonSignal==0){bee();}                   //嗡嗡嗡  嗡嗡嗡
+ 181   5                                      buttonSignal = 0;
+ 182   5                                      LCD_GoToLineOne();
+ 183   5                                      LCD_DisplayString("                ");
+ 184   5                                      
+ 185   5                                      //delay_ms(50000);
+ 186   5                              
+ 187   5                              } //end of if
+ 188   4      
+ 189   4                        } //end of if
+ 190   3      
+ 191   3                      ////////////////////    j++;
+ 192   3      
+ 193   3              }  //end of for
+ 194   2      
+ 195   2                              delay_ms(1000);
+ 196   2                }  //endofwhile       
+ 197   1        
+ 198   1      
+ 199   1      }
+ 200          
+ 201          /******************************************************
+ 202          中斷副程式：UART_int() interrupt 4
+ 203          ******************************************************/
+ 204          void UART_int() interrupt 4
+ 205          {
+ 206   1      
+ 207   1      
+ 208   1              if(RI==1)       //若RI=1,為接收中斷
+ 209   1              {
+ 210   2                              receiving = 1;
+ 211   2      
+ 212   2                              receivString[k] = SBUF;
+ 213   2              
+ 214   2                              k++;    
+ 215   2              }
+ 216   1      
+ 217   1                if(receivString[k-1] == 0x23) // if == "#"
+ 218   1                {
+ 219   2                      
+ 220   2                      LCD_GoToLineOne();
+ 221   2                      LCD_DisplayString("                ");
+ 222   2                      LCD_GoToLineTwo();
+ 223   2                      LCD_DisplayString("                ");
+ 224   2                      LCD_GoToLineOne();
+ 225   2      
+ 226   2                      for(j=0;j<k;j++)
+ 227   2                      LCD_DataWrite(receivString[j]);
+ 228   2      
+ 229   2      
+ 230   2      
+ 231   2                      /*************解析App訊號******************/
+ 232   2      
+ 233   2                      mode = receivString[0];
+ 234   2                      h1 = receivString[1];
+ 235   2                      h2 = receivString[2];   
+ 236   2                      m1 = receivString[3];
+ 237   2                      m2 = receivString[4];
+C51 COMPILER V9.03   MAIN                                                                  11/22/2014 02:38:00 PAGE 5   
+
+ 238   2      
+ 239   2                      h1 = h1 - 0x30;
+ 240   2                      h2 = h2 - 0x30;
+ 241   2                      m1 = m1 - 0x30;
+ 242   2                      m2 = m2 - 0x30;
+ 243   2      
+ 244   2                      h3 = ((h1 << 4) & 0xf0) | (h2 & 0x0f) ;
+ 245   2                      m3 = ((m1 << 4) & 0xf0) | (m2 & 0x0f) ;
+ 246   2              
+ 247   2                 
+ 248   2                      switch(mode)
+ 249   2                      {
+ 250   3                      
+ 251   3                              case 0x61:   //"a"
+ 252   3      
+ 253   3                                      //for迴圈1~10在鬧鐘陣列裡找出空位   鬧鐘設進去
+ 254   3                                      for(l=1; l<=10; l++)
+ 255   3                                      {
+ 256   4                                              if(altable[l][10] == 0xAA)
+ 257   4                                              {
+ 258   5                                                      tableNum = l;
+ 259   5                                                      nullIsFound = 1;
+ 260   5                                                      break;
+ 261   5                                               }
+ 262   4                                      
+ 263   4                                      }       
+ 264   3      
+ 265   3                                      ////////////////////////////////////////////////////////////////if nullIsFound != 1???   沒空位了咧??
+ 266   3                                      
+ 267   3                                      altable[tableNum][8] = h3;                      
+ 268   3                                      altable[tableNum][9] = m3;                              
+ 269   3      
+ 270   3                          //鬧鐘設定資料寫入EEPROM
+ 271   3                                      eewrite(8+tableNum*16,h3);
+ 272   3                                      eewrite(9+tableNum*16,m3);
+ 273   3                                      eewrite(10+tableNum*16,0xBB);
+ 274   3      
+ 275   3      
+ 276   3                                      /*設定星期~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+ 277   3                                      
+ 278   3                                       k = 5;                                                  //若沒設星期，視為每天都響
+ 279   3      
+ 280   3                                       if(receivString[k] == 0x23){
+ 281   4                                       
+ 282   4                                              for(l=1; l<=7; l++){
+ 283   5                                              
+ 284   5                                                      altable[tableNum][l] = 0xBB;
+ 285   5                                                      eewrite(l+tableNum*16,0xBB);
+ 286   5                                              }
+ 287   4                                       }
+ 288   3      
+ 289   3      
+ 290   3                                       while(receivString[k] != 0x23)  //while != "#"
+ 291   3                                       {
+ 292   4                                               
+ 293   4                                              switch(receivString[k])
+ 294   4                                              {
+ 295   5                                                       case 0x31:                     //Mon is set
+ 296   5                                                              altable[tableNum][1] = 0xBB;
+ 297   5                                                              eewrite(1+tableNum*16,0xBB);            //eewrite(MonAddress, isset)
+ 298   5                                                              break;
+ 299   5                                              
+C51 COMPILER V9.03   MAIN                                                                  11/22/2014 02:38:00 PAGE 6   
+
+ 300   5                                                       case 0x32:                     //Tue is set
+ 301   5                                                              altable[tableNum][2] = 0xBB;
+ 302   5                                                              eewrite(2+tableNum*16,0xBB);            //eewrite(TueAddress, isset)
+ 303   5                                                              break;
+ 304   5                                              
+ 305   5                                                       case 0x33:                     //Wed is set
+ 306   5                                                              altable[tableNum][3] = 0xBB;
+ 307   5                                                              eewrite(3+tableNum*16,0xBB);            //eewrite(WedAddress, isset)
+ 308   5                                                              break;
+ 309   5                                              
+ 310   5                                                       case 0x34:                     //Thur is set
+ 311   5                                                              altable[tableNum][4] = 0xBB;
+ 312   5                                                              eewrite(4+tableNum*16,0xBB);            //eewrite(ThhurAddress, isset)
+ 313   5                                                              break;
+ 314   5                                              
+ 315   5                                                       case 0x35:                     //Fri is set
+ 316   5                                                              altable[tableNum][5] = 0xBB;
+ 317   5                                                              eewrite(5+tableNum*16,0xBB);            //eewrite(FriAddress, isset)
+ 318   5                                                              break;
+ 319   5                                              
+ 320   5                                                       case 0x36:                     //Sat is set
+ 321   5                                                              altable[tableNum][6] = 0xBB;
+ 322   5                                                              eewrite(6+tableNum*16,0xBB);            //eewrite(SatAddress, isset)
+ 323   5                                                              break;
+ 324   5                                              
+ 325   5                                                       case 0x37:                     //Sun is set
+ 326   5                                                              altable[tableNum][7] = 0xBB;
+ 327   5                                                              eewrite(7+tableNum*16,0xBB);            //eewrite(SunAddress, isset)
+ 328   5                                                              break;
+ 329   5                                              
+ 330   5                                              }
+ 331   4                                              altable[tableNum][10] = 0xBB;
+ 332   4                                              
+ 333   4      
+ 334   4                                              k++;
+ 335   4                                       
+ 336   4                                       }
+ 337   3                                      /*設定星期~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+ 338   3                         
+ 339   3                                      break;
+ 340   3      
+ 341   3      
+ 342   3                              case 0x62:   //"b"                                                      //送亮燈訊號給小球
+ 343   3                      
+ 344   3                                      
+ 345   3                                      buttonSignal = 1 ;
+ 346   3      
+ 347   3      
+ 348   3      
+ 349   3                                      break;
+ 350   3      
+ 351   3      
+ 352   3                              case 0x63:   //"c"                                                    //金手指，清空所有鬧鐘
+ 353   3      
+ 354   3                                      for(i=1; i<=10; i++)                                                                                             
+ 355   3                                              for(j=1; j<=10; j++){
+ 356   4                                                        eewrite(i*16+j, 0xAA);
+ 357   4                                                        altable[i][j] = 0xAA;
+ 358   4                                              }
+ 359   3      
+ 360   3                                      break;
+ 361   3      
+C51 COMPILER V9.03   MAIN                                                                  11/22/2014 02:38:00 PAGE 7   
+
+ 362   3      
+ 363   3                              case 0x64:   //"d"
+ 364   3      
+ 365   3                                      for(l=0; l<=10; l++)
+ 366   3                                      {
+ 367   4                                               if(altable[l][8] == h3 && altable[l][9] == m3)         ////////////////////////////////////沒看星期喔//////
+             -///////////
+ 368   4                                               {
+ 369   5                                                       tableNum = l;
+ 370   5                                                       break;
+ 371   5                                                 }   
+ 372   4                                       }      //end for
+ 373   3      
+ 374   3      
+ 375   3                                       for(l=1; l<=7; l++)
+ 376   3                                              altable[tableNum][l] = 0xAA;
+ 377   3      
+ 378   3                                       for(l=1; l<=7; l++)
+ 379   3                                          eewrite(tableNum*16+l,0xAA);
+ 380   3      
+ 381   3                                       altable[tableNum][10] = 0xAA;
+ 382   3                                       eewrite(tableNum*16+10,0xAA);
+ 383   3      
+ 384   3                                      break;
+ 385   3      
+ 386   3                      
+ 387   3                              case 0x6D:   //"m"
+ 388   3      
+ 389   3                                       for(l=1; l<=10; l++)
+ 390   3                                      {
+ 391   4                                               if(altable[l][8] == h3 && altable[l][9] == m3)                 ////////////////////////////////////沒看星期喔////
+             -/////////////
+ 392   4                                               {
+ 393   5                                                       tableNum = l;
+ 394   5                                                       break;
+ 395   5                                                 }   
+ 396   4                                       }      //end for
+ 397   3      
+ 398   3                                      k=5;
+ 399   3      
+ 400   3                                      while(receivString[k] != 0x2A)
+ 401   3                                      k++;                                             // 抓到"*"
+ 402   3      
+ 403   3                                      k++;
+ 404   3      
+ 405   3                                      h1 = receivString[k++];
+ 406   3                                      h2 = receivString[k++]; 
+ 407   3                                      m1 = receivString[k++];
+ 408   3                                      m2 = receivString[k++];
+ 409   3      
+ 410   3                                      h1 = h1 - 0x30;
+ 411   3                                      h2 = h2 - 0x30;
+ 412   3                                      m1 = m1 - 0x30;
+ 413   3                                      m2 = m2 - 0x30;
+ 414   3      
+ 415   3                                      h3 = ((h1 << 4) & 0xf0) | (h2 & 0x0f) ;
+ 416   3                                      m3 = ((m1 << 4) & 0xf0) | (m2 & 0x0f) ;
+ 417   3      
+ 418   3                                      altable[tableNum][8] = h3;                      
+ 419   3                                      altable[tableNum][9] = m3;                              
+ 420   3      
+ 421   3                          //鬧鐘設定資料寫入EEPROM
+C51 COMPILER V9.03   MAIN                                                                  11/22/2014 02:38:00 PAGE 8   
+
+ 422   3                                      eewrite(8+tableNum*16,h3);
+ 423   3                                      eewrite(9+tableNum*16,m3);
+ 424   3      
+ 425   3                                      for(l=1; l<=7; l++)
+ 426   3                                              altable[tableNum][l] = 0xAA;
+ 427   3      
+ 428   3                                       for(l=1; l<=7; l++)
+ 429   3                                          eewrite(tableNum*16+l,0xAA);
+ 430   3      
+ 431   3      
+ 432   3                                      /*設定星期~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+ 433   3                                      
+ 434   3                                       while(receivString[k] != 0x23)  //while != "#"
+ 435   3                                       {
+ 436   4                                               
+ 437   4                                              switch(receivString[k])
+ 438   4                                              {
+ 439   5                                                       case 0x31:                     //Mon is set
+ 440   5                                                              altable[tableNum][1] = 0xBB;
+ 441   5                                                              eewrite(1+tableNum*16,0xBB);            //eewrite(MonAddress, isset)
+ 442   5                                                              break;
+ 443   5                                              
+ 444   5                                                       case 0x32:                     //Tue is set
+ 445   5                                                              altable[tableNum][2] = 0xBB;
+ 446   5                                                              eewrite(2+tableNum*16,0xBB);            //eewrite(TueAddress, isset)
+ 447   5                                                              break;
+ 448   5                                              
+ 449   5                                                       case 0x33:                     //Wed is set
+ 450   5                                                              altable[tableNum][3] = 0xBB;
+ 451   5                                                              eewrite(3+tableNum*16,0xBB);            //eewrite(WedAddress, isset)
+ 452   5                                                              break;
+ 453   5                                              
+ 454   5                                                       case 0x34:                     //Thur is set
+ 455   5                                                              altable[tableNum][4] = 0xBB;
+ 456   5                                                              eewrite(4+tableNum*16,0xBB);            //eewrite(ThhurAddress, isset)
+ 457   5                                                              break;
+ 458   5                                              
+ 459   5                                                       case 0x35:                     //Fri is set
+ 460   5                                                              altable[tableNum][5] = 0xBB;
+ 461   5                                                              eewrite(5+tableNum*16,0xBB);            //eewrite(FriAddress, isset)
+ 462   5                                                              break;
+ 463   5                                              
+ 464   5                                                       case 0x36:                     //Sat is set
+ 465   5                                                              altable[tableNum][6] = 0xBB;
+ 466   5                                                              eewrite(6+tableNum*16,0xBB);            //eewrite(SatAddress, isset)
+ 467   5                                                              break;
+ 468   5                                              
+ 469   5                                                       case 0x37:                     //Sun is set
+ 470   5                                                              altable[tableNum][7] = 0xBB;
+ 471   5                                                              eewrite(7+tableNum*16,0xBB);            //eewrite(SunAddress, isset)
+ 472   5                                                              break;
+ 473   5                                              
+ 474   5                                              }
+ 475   4                                              
+ 476   4                                              k++;
+ 477   4                                       
+ 478   4                                       }
+ 479   3                                      /*設定星期~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+ 480   3      
+ 481   3      
+ 482   3                                      break;
+ 483   3      
+C51 COMPILER V9.03   MAIN                                                                  11/22/2014 02:38:00 PAGE 9   
+
+ 484   3      
+ 485   3                      
+ 486   3                          case 0x69:   //"i"
+ 487   3      
+ 488   3                                      Y1 = receivString[5];
+ 489   3                                      Y2 = receivString[6];
+ 490   3                                      Mon1 = receivString[7];
+ 491   3                                      Mon2 = receivString[8];
+ 492   3                                      D1 = receivString[9];
+ 493   3                                      D2 = receivString[10];
+ 494   3                                      wd1= receivString[11];
+ 495   3                                      
+ 496   3                                      Y1 = Y1 - 0x30;
+ 497   3                                      Y2 = Y2 - 0x30;
+ 498   3                                      Mon1 = Mon1 - 0x30;
+ 499   3                                      Mon2 = Mon2 - 0x30;
+ 500   3                                      D1 = D1 - 0x30;
+ 501   3                                      D2 = D2 - 0x30;
+ 502   3                                      wd1 = wd1 - 0x30;       
+ 503   3                                      
+ 504   3                                      Y3 = ((Y1 << 4) & 0xf0) | (Y2 & 0x0f) ;
+ 505   3                                      Mon3 = ((Mon1 << 4) & 0xf0) | (Mon2 & 0x0f) ;
+ 506   3                                      D3 = ((D1 << 4) & 0xf0) | (D2 & 0x0f);
+ 507   3                                      wd1 = ((wd1 << 4) & 0xf0) | (wd1 & 0x0f);       
+ 508   3                                      
+ 509   3                                      DS1307_SetTime(h3,m3,0x00);  // hour min sec 
+ 510   3                                      DS1307_SetDate(wd1,D3,Mon3,Y3);  //     weekday day mon year                                    
+ 511   3      
+ 512   3                                      break;
+ 513   3      
+ 514   3      
+ 515   3                              
+ 516   3      
+ 517   3                      }
+ 518   2      
+ 519   2                      /*************解析App訊號******************/
+ 520   2      
+ 521   2                      LCD_GoToLineOne();                                          //清除接收訊號畫面
+ 522   2                      LCD_DisplayString("                "); 
+ 523   2      
+ 524   2                      for(i=0; i<=k; i++)
+ 525   2                        receivString[i] = " ";
+*** WARNING C260 IN LINE 525 OF main.c: '=': pointer truncation
+ 526   2      
+ 527   2                      k = 0;
+ 528   2      
+ 529   2                      //delay_ms(10000);
+ 530   2      
+ 531   2                      receiving = 0;
+ 532   2      
+ 533   2                 }     //end of IF(receivString[k-1] == "#")
+ 534   1      
+ 535   1        
+ 536   1      
+ 537   1                 RI=0;        //清除接收中斷旗標
+ 538   1      
+ 539   1              
+ 540   1              if(TI==1)
+ 541   1                      TI=0;   //若RI=0,為傳送中斷,清除傳送中斷旗標
+ 542   1      }
+ 543          /*******************************************************
+ 544          *******************************************************/
+C51 COMPILER V9.03   MAIN                                                                  11/22/2014 02:38:00 PAGE 10  
+
+ 545          
+ 546          void bee(){
+ 547   1              
+ 548   1                         
+ 549   1               
+ 550   1                              //SW1 ON 播放
+ 551   1                              while(music_Table[z] != 0)
+ 552   1                              {
+ 553   2      
+ 554   2      
+ 555   2                                      //buttonSignal = button;
+ 556   2                                      //if(buttonSignal == 1)
+ 557   2                                      //break;
+ 558   2                                      
+ 559   2                                      
+ 560   2                                      bbb = button;
+ 561   2                                      if(buttonSignal == 1 || bbb ==1){
+ 562   3                                              buttonSignal = 1;
+ 563   3                                              break;}
+ 564   2      
+ 565   2                                      voice_Now = music_Table[z];
+ 566   2                                      //音頻資料存入計數值
+ 567   2                                      TL0 = voice_Now;
+ 568   2                                      TH0 = voice_Now>>8;                                                             
+ 569   2                                      TR0 = 1;//啟動計時                              
+ 570   2                                      delay(music_Table[z+1]*18);//延時,發音的時間                            
+ 571   2                                      TR0 = 0;//停止timer0計時
+ 572   2                                      
+ 573   2                                      delay(1);
+ 574   2                                      z+=2;
+ 575   2                              }
+ 576   1              
+ 577   1                              z = 0;
+ 578   1      }
+ 579          
+ 580          
+ 581          /*******************************************************
+ 582          *******************************************************/
+ 583          
+ 584          
+ 585          //Time0中斷函數
+ 586          void voice_T1_int(void) interrupt 1
+ 587          {
+ 588   1              if(voice_Now==s)
+ 589   1                      Speaker = 1;
+ 590   1              else{
+ 591   2                      
+ 592   2                      //重新設定計時值
+ 593   2                      TL0 = voice_Now;
+ 594   2                      TH0 = voice_Now>>8;
+ 595   2                      Speaker= ~Speaker;
+ 596   2                      
+ 597   2                      }
+ 598   1              }
+ 599          
+ 600          
+ 601          /***********************************************/
+ 602          //暫存器設定
+ 603          void resSetting(void)
+ 604          {
+ 605   1      
+ 606   1              EA=1;          //致能整體中斷
+C51 COMPILER V9.03   MAIN                                                                  11/22/2014 02:38:00 PAGE 11  
+
+ 607   1      
+ 608   1              TMOD=0x21;      //設定Timer1在mode2      Timer0在mode1
+ 609   1              PCON=PCON&0x7f; //清除SMOD
+ 610   1              TH1=0xFD;       //設定baud rate=9600
+ 611   1              TR1=1;          //啟動Timer1
+ 612   1      
+ 613   1              SCON=0x50;      //UART Mode1,REN=1
+ 614   1              IP=0x10;        //設定UART中斷為高優先權,PS=1
+ 615   1              IE=0x90;        //致能UART中斷,EA=1 & ES=1
+ 616   1      
+ 617   1              
+ 618   1              ET0= 1;
+ 619   1      
+ 620   1      
+ 621   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   2499    ----
+   CONSTANT SIZE    =    306    ----
+   XDATA SIZE       =    156    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     42       7
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  1 WARNING(S),  0 ERROR(S)
